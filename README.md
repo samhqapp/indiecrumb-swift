@@ -103,8 +103,9 @@ memory only), a hostname, a user name, or a file path. Crash text has the home f
 | `uses` | uses counted with `recordUse()` since the last ping, capped at 1023 |
 | `pro` | the paid tier, `true` or `false` |
 | `counters` | `{name: n}` from `add(_:_:)` since the last ping, at most 16 names; the server drops names the project did not define |
+| `channel` | `production`, `beta` or `internal`. Default: `beta` for a TestFlight build (sandbox receipt), else `production`. Override with `Usage(ic, channel: .internal)`. The server stores anything else as `production`. |
 
-The server stores only daily totals per app, version, OS and arch.
+The server stores only daily totals per app, version, OS, arch and channel.
 
 ### `POST /ic/v1/feedback` (`IndieCrumbFeedback`)
 

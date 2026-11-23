@@ -19,7 +19,16 @@ public final class Usage: @unchecked Sendable {
     var timer: DispatchSourceTimer?
     var file: URL { core.directory.appendingPathComponent("usage.json") }
 
-    public init(_ core: IndieCrumb) { self.core = core }
+    /// The release channel the ping reports. The server keeps each channel's totals apart.
+    public enum Channel: String, Sendable { case production, beta, `internal` }
+
+    /// Set at init; `nil` picks `.beta` for a TestFlight build (sandbox receipt), else `.production`.
+    public let channel: Channel
+
+    public init(_ core: IndieCrumb, channel: Channel? = nil) {
+        self.core = core
+        self.channel = channel ?? (Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt" ? .beta : .production)
+    }
 
     /// Counts one use of the app's main action. Cheap; safe from any thread.
     public func recordUse() { change { $0.uses += 1 } }
@@ -60,7 +69,7 @@ public final class Usage: @unchecked Sendable {
         let body: [String: Any] = [
             "version": core.version, "build": core.build, "os": Platform.os, "os_major": Platform.osMajor,
             "arch": Platform.arch, "d": 1, "m": c.lastMonth == month ? 0 : 1, "uses": min(c.uses, 1023),
-            "pro": pro, "counters": c.counters,
+            "pro": pro, "counters": c.counters, "channel": channel.rawValue,
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys]) else { return nil }
         let res = core.sendNow(route: Self.route, body: data, install: true)
