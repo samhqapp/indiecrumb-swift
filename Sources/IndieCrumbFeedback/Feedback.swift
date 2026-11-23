@@ -51,30 +51,50 @@ extension IndieCrumb {
     }
 }
 
-/// Returns a PNG or JPEG of at most 300 KB and 2,000 pixels a side: the input as it is when it already
-/// fits, else a JPEG at falling quality and size. Nil when ImageIO can't read it.
+/// Returns a PNG or JPEG of at most 300 KB and 2,000 pixels a side, always freshly encoded from the
+/// pixels with no properties copied, so no EXIF, GPS or TIFF metadata (such as the location) leaves the
+/// device. A PNG stays PNG when it fits, else a JPEG at falling quality and size. Nil when ImageIO can't read it.
 package func fitScreenshot(_ data: Data, maxBytes: Int = 300 << 10, maxSide: Int = 2000) -> Data? {
     guard let src = CGImageSourceCreateWithData(data as CFData, nil),
           let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any] else { return nil }
     let w = props[kCGImagePropertyPixelWidth] as? Int ?? 0, h = props[kCGImagePropertyPixelHeight] as? Int ?? 0
-    let type = CGImageSourceGetType(src) as String?
-    if data.count <= maxBytes, max(w, h) <= maxSide, w > 0, h > 0,
-       type == UTType.png.identifier || type == UTType.jpeg.identifier {
-        return data
+    guard w > 0, h > 0 else { return nil }
+    let png = (CGImageSourceGetType(src) as String?) == UTType.png.identifier
+    func encode(_ img: CGImage, _ type: UTType, _ opts: [CFString: Any]) -> Data? {
+        let out = NSMutableData()
+        guard let dst = CGImageDestinationCreateWithData(out, type.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(dst, img, opts as CFDictionary)
+        guard CGImageDestinationFinalize(dst) else { return nil }
+        let bytes = type == .jpeg ? dropJPEGMetadata(out as Data) : out as Data
+        return bytes.count <= maxBytes ? bytes : nil
     }
     var side = min(max(w, h), maxSide)
-    while side >= 200 {
+    repeat {
         let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
                                      kCGImageSourceThumbnailMaxPixelSize: side,
                                      kCGImageSourceCreateThumbnailWithTransform: true]
         guard let img = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
+        if png, let out = encode(img, .png, [:]) { return out }
         for q in [0.8, 0.6, 0.4] {
-            let out = NSMutableData()
-            guard let dst = CGImageDestinationCreateWithData(out, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
-            CGImageDestinationAddImage(dst, img, [kCGImageDestinationLossyCompressionQuality: q] as CFDictionary)
-            if CGImageDestinationFinalize(dst), out.length <= maxBytes { return out as Data }
+            if let out = encode(img, .jpeg, [kCGImageDestinationLossyCompressionQuality: q]) { return out }
         }
         side = side * 2 / 3
-    }
+    } while side >= 200
     return nil
+}
+
+/// Removes the APP1 (Exif, XMP) and APP13 (IPTC) segments that the JPEG encoder writes by itself.
+func dropJPEGMetadata(_ d: Data) -> Data {
+    let b = [UInt8](d)
+    guard b.count > 4, b[0] == 0xFF, b[1] == 0xD8 else { return d }
+    var out: [UInt8] = [0xFF, 0xD8], i = 2
+    while i + 4 <= b.count, b[i] == 0xFF {
+        let marker = b[i + 1]
+        if marker == 0xDA { break }   // start of scan: the rest is image data
+        let end = i + 2 + (Int(b[i + 2]) << 8 | Int(b[i + 3]))
+        guard end <= b.count else { return d }
+        if marker != 0xE1, marker != 0xED { out += b[i..<end] }
+        i = end
+    }
+    return Data(out + b[i...])
 }

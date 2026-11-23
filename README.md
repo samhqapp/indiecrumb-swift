@@ -115,7 +115,7 @@ The server stores only daily totals per app, version, OS, arch and channel.
 | `kind` | `bug`, `idea` or `question` |
 | `text` | what the user typed, 1 to 4,000 characters |
 | `email` | only when the user typed one |
-| `screenshot` | only when the user attached one: base64 PNG or JPEG, at most 300 KB and 2,000 x 2,000 pixels (larger images are scaled down to a JPEG first, which also drops their metadata) |
+| `screenshot` | only when the user attached one: base64 PNG or JPEG, at most 300 KB and 2,000 x 2,000 pixels (every image is encoded again from its pixels, so no EXIF, GPS or TIFF metadata is sent; larger images are scaled down to a JPEG) |
 | `version`, `build` | as above |
 | `os` | such as `macOS 15.1` or `iOS 18.1` |
 | `device` | the model id, such as `Mac15,3` or `iPhone16,1` |

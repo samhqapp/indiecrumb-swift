@@ -142,7 +142,9 @@ final class FeedbackTests: XCTestCase {
         let v = m.json(0)
         XCTAssertEqual(Set(v.keys), ["build", "device", "email", "kind", "os", "pro", "screenshot", "text", "version"])
         XCTAssertEqual(v["text"] as? String, "Dark mode please")
-        XCTAssertEqual(Data(base64Encoded: v["screenshot"] as! String), png) // fits already: sent as is
+        let sent = try XCTUnwrap(Data(base64Encoded: v["screenshot"] as! String))
+        XCTAssertTrue(sent.starts(with: [0x89, 0x50, 0x4E, 0x47])) // fits: still a PNG, but re-encoded
+        XCTAssertEqual(sent, fitScreenshot(png))
     }
 
     func testFitScreenshotShrinksLargeImages() throws {
@@ -150,6 +152,33 @@ final class FeedbackTests: XCTestCase {
         let small = try XCTUnwrap(fitScreenshot(png, maxBytes: 8000, maxSide: 300))
         XCTAssertLessThanOrEqual(small.count, 8000)
         XCTAssertTrue(small.starts(with: [0xFF, 0xD8, 0xFF]))
+    }
+
+    /// A small photo that already fits is still re-encoded: its GPS, EXIF and TIFF metadata never go out.
+    func testFitScreenshotStripsMetadata() throws {
+        let ctx = CGContext(data: nil, width: 64, height: 48, bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+        ctx.setFillColor(red: 0.2, green: 0.5, blue: 0.8, alpha: 1); ctx.fill(CGRect(x: 0, y: 0, width: 64, height: 48))
+        let jpeg = NSMutableData()
+        let dst = CGImageDestinationCreateWithData(jpeg, "public.jpeg" as CFString, 1, nil)!
+        let meta: [CFString: Any] = [
+            kCGImagePropertyGPSDictionary: [kCGImagePropertyGPSLatitude: 12.97, kCGImagePropertyGPSLatitudeRef: "N",
+                                            kCGImagePropertyGPSLongitude: 77.59, kCGImagePropertyGPSLongitudeRef: "E"],
+            kCGImagePropertyExifDictionary: [kCGImagePropertyExifUserComment: "secret"],
+            kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFMake: "TestCam"],
+        ]
+        CGImageDestinationAddImage(dst, ctx.makeImage()!, meta as CFDictionary)
+        XCTAssertTrue(CGImageDestinationFinalize(dst))
+        func props(_ d: Data) -> [CFString: Any] {
+            CGImageSourceCopyPropertiesAtIndex(CGImageSourceCreateWithData(d as CFData, nil)!, 0, nil) as! [CFString: Any]
+        }
+        XCTAssertNotNil(props(jpeg as Data)[kCGImagePropertyGPSDictionary])   // the fixture really has a location
+        let out = try XCTUnwrap(fitScreenshot(jpeg as Data))
+        let p = props(out)
+        XCTAssertNil(p[kCGImagePropertyGPSDictionary])
+        XCTAssertNil(p[kCGImagePropertyExifDictionary])
+        XCTAssertNil(p[kCGImagePropertyTIFFDictionary])
     }
 }
 
