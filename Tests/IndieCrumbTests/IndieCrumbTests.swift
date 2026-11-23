@@ -96,6 +96,20 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(m.sent.count, 1)
     }
 
+    /// An auto item that landed in the queue just as the switch went off is deleted unsent; a user-sent one still goes.
+    func testFlushWithSwitchOffDropsAutoItemsAndKeepsUserSent() throws {
+        let m = Mock()
+        let c = core(tempDir("off-race"), m)
+        c.isEnabled = false
+        try FileManager.default.createDirectory(at: c.queueDir, withIntermediateDirectories: true)
+        try Data("/ic/v1/ping 1 0\n{}".utf8).write(to: c.queueDir.appendingPathComponent("0000000001-aaaa"))
+        try Data("/ic/v1/feedback 1 1\n{}".utf8).write(to: c.queueDir.appendingPathComponent("0000000002-bbbb"))
+        XCTAssertEqual(c.flush(), 1)
+        XCTAssertEqual(m.sent.map { $0.url?.path }, ["/ic/v1/feedback"])
+        XCTAssertNil(m.sent[0].value(forHTTPHeaderField: "X-IC-Install"))   // stripped at send time while off
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: c.queueDir.path), [])
+    }
+
     func testScrub() {
         XCTAssertEqual(scrub("open /Users/alice/Library/x.txt failed"), "open ~/Library/x.txt failed")
         XCTAssertEqual(scrub(NSHomeDirectory() + "/a"), "~/a")

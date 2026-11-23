@@ -117,57 +117,63 @@ public final class IndieCrumb: @unchecked Sendable {
     var queueDir: URL { directory.appendingPathComponent("queue") }
 
     /// Sends every queued item, oldest first, until one fails. Returns how many went.
-    @discardableResult public func flush() -> Int { flushInner().sent }
+    @discardableResult public func flush() -> Int { sendLock.withLock { flushLocked() }.sent }
 
-    func flushInner() -> (sent: Int, dropped: [String: Int]) {
-        sendLock.withLock {
-            var sent = 0
-            var dropped: [String: Int] = [:]
-            for (url, _) in queueItems() {
-                guard let raw = try? Data(contentsOf: url), let nl = raw.firstIndex(of: 0x0A) else {
-                    try? FileManager.default.removeItem(at: url)
-                    continue
-                }
-                let head = String(decoding: raw[raw.startIndex..<nl], as: UTF8.self).split(separator: " ")
-                let body = raw[raw.index(after: nl)...]
-                switch post(route: String(head.first ?? ""), body: Data(body), install: head.last == "1") {
-                case .sent:
-                    try? FileManager.default.removeItem(at: url)
-                    sent += 1
-                case .drop(let code):
-                    try? FileManager.default.removeItem(at: url)
-                    dropped[url.lastPathComponent] = code
-                case .retry:
-                    return (sent, dropped)
-                }
+    /// Caller holds `sendLock`. With the switch off, every item the user did not send is deleted unsent.
+    func flushLocked() -> (sent: Int, dropped: [String: Int]) {
+        var sent = 0
+        var dropped: [String: Int] = [:]
+        for (url, _) in queueItems() {
+            guard let raw = try? Data(contentsOf: url), let nl = raw.firstIndex(of: 0x0A) else {
+                try? FileManager.default.removeItem(at: url)
+                continue
             }
-            return (sent, dropped)
+            // Header: "<route> <install 0|1> <user-sent 0|1>"
+            let head = String(decoding: raw[raw.startIndex..<nl], as: UTF8.self).split(separator: " ")
+            guard isEnabled || (head.count > 2 && head[2] == "1") else {
+                try? FileManager.default.removeItem(at: url)
+                continue
+            }
+            let body = raw[raw.index(after: nl)...]
+            switch post(route: String(head.first ?? ""), body: Data(body), install: head.count > 1 && head[1] == "1") {
+            case .sent:
+                try? FileManager.default.removeItem(at: url)
+                sent += 1
+            case .drop(let code):
+                try? FileManager.default.removeItem(at: url)
+                dropped[url.lastPathComponent] = code
+            case .retry:
+                return (sent, dropped)
+            }
         }
+        return (sent, dropped)
     }
 
-    /// Stores one request in the queue, then sends the queue.
+    /// Stores one request in the queue, then sends the queue. The switch check and the write share
+    /// `sendLock`, so turning the switch off cannot fall between them.
     /// - Parameter userSent: the user pressed Send on it, so it goes even with the switch off (without the install id).
     package func enqueueAndFlush(route: String, body: Data, install: Bool, userSent: Bool = false) -> Delivery {
-        let on = isEnabled
-        guard on || userSent else { return .off }
-        let name = String(format: "%010d-", Int(now().timeIntervalSince1970)) + randomHex(4)
-        let file = queueDir.appendingPathComponent(name)
-        var data = Data("\(route) \(install && on ? 1 : 0)\n".utf8)
-        data.append(body)
-        guard data.count <= Self.queueBytes,
-              (try? FileManager.default.createDirectory(at: queueDir, withIntermediateDirectories: true,
-                                                        attributes: [.posixPermissions: 0o700])) != nil,
-              (try? writePrivate(data, to: file)) != nil else { return .rejected(413) }
-        pruneQueue()
-        let (_, dropped) = flushInner()
-        if let code = dropped[name] { return .rejected(code) }
-        return FileManager.default.fileExists(atPath: file.path) ? .queued : .sent
+        sendLock.withLock {
+            guard isEnabled || userSent else { return .off }
+            let name = String(format: "%010d-", Int(now().timeIntervalSince1970)) + randomHex(4)
+            let file = queueDir.appendingPathComponent(name)
+            var data = Data("\(route) \(install ? 1 : 0) \(userSent ? 1 : 0)\n".utf8)
+            data.append(body)
+            guard data.count <= Self.queueBytes,
+                  (try? FileManager.default.createDirectory(at: queueDir, withIntermediateDirectories: true,
+                                                            attributes: [.posixPermissions: 0o700])) != nil,
+                  (try? writePrivate(data, to: file)) != nil else { return .rejected(413) }
+            pruneQueue()
+            let (_, dropped) = flushLocked()
+            if let code = dropped[name] { return .rejected(code) }
+            return FileManager.default.fileExists(atPath: file.path) ? .queued : .sent
+        }
     }
 
     /// Sends one request now, without the queue (the usage ping: a late ping must not count for a later day).
     package func sendNow(route: String, body: Data, install: Bool) -> Delivery {
-        guard isEnabled else { return .off }
-        return sendLock.withLock {
+        sendLock.withLock {
+            guard isEnabled else { return .off }
             switch post(route: route, body: body, install: install) {
             case .sent: return .sent
             case .retry: return .queued
@@ -182,7 +188,6 @@ public final class IndieCrumb: @unchecked Sendable {
     /// wait `Retry-After` or 1 minute doubling to 6 hours; any other status drops the item.
     func post(route: String, body: Data, install: Bool) -> Outcome {
         let t = now()
-        // No switch check here: while off, the queue holds only reports the user sent (off deletes the rest).
         guard lock.withLock({ state.retryAt <= t }) else { return .retry }
         let base = endpoint.absoluteString.hasSuffix("/") ? String(endpoint.absoluteString.dropLast()) : endpoint.absoluteString
         guard let url = URL(string: base + route) else { return .drop(400) }
@@ -191,7 +196,7 @@ public final class IndieCrumb: @unchecked Sendable {
         req.httpBody = body
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(key, forHTTPHeaderField: "X-IC-Key")
-        if install { req.setValue(installID, forHTTPHeaderField: "X-IC-Install") }
+        if install, isEnabled { req.setValue(installID, forHTTPHeaderField: "X-IC-Install") }   // checked at send time
         let res = transport(req)
         return lock.withLock {
             defer { saveState() }
