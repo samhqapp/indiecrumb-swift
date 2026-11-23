@@ -157,7 +157,8 @@ public final class IndieCrumb: @unchecked Sendable {
             guard isEnabled || userSent else { return .off }
             let name = String(format: "%010d-", Int(now().timeIntervalSince1970)) + randomHex(4)
             let file = queueDir.appendingPathComponent(name)
-            var data = Data("\(route) \(install ? 1 : 0) \(userSent ? 1 : 0)\n".utf8)
+            // The install id is allowed only if sharing was on when queued; send time checks again.
+            var data = Data("\(route) \(install && isEnabled ? 1 : 0) \(userSent ? 1 : 0)\n".utf8)
             data.append(body)
             guard data.count <= Self.queueBytes,
                   (try? FileManager.default.createDirectory(at: queueDir, withIntermediateDirectories: true,
