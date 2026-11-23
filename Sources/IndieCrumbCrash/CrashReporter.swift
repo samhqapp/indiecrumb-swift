@@ -36,8 +36,6 @@ public struct CrashReport: Codable, Sendable {
 /// Crash reports through MetricKit. macOS hands the last run's crash to the app at its next launch;
 /// the reporter writes it to `<directory>/crashes/` and sends nothing by itself. The app then asks the
 /// user (`pending`, `send(_:)`, `discard(_:)`; no install id is sent) or sends all (`sendAll()`).
-///
-/// The server route `POST /ic/v1/crash` is not built yet; the body follows plan sections 5 and 7.
 public final class CrashReporter: NSObject, MXMetricManagerSubscriber, @unchecked Sendable {
     static let route = "/ic/v1/crash"
     static let spoolFiles = 10
@@ -46,6 +44,9 @@ public final class CrashReporter: NSObject, MXMetricManagerSubscriber, @unchecke
     let core: IndieCrumb
     var dir: URL { core.directory.appendingPathComponent("crashes") }
 
+    /// Called on MetricKit's queue after a new crash is written; MetricKit delivers it some seconds after launch.
+    public var onNewCrash: (@Sendable () -> Void)?
+
     public init(_ core: IndieCrumb) { self.core = core }
 
     /// Subscribe early at launch, so the last run's crash arrives in this run.
@@ -53,6 +54,7 @@ public final class CrashReporter: NSObject, MXMetricManagerSubscriber, @unchecke
 
     /// Writes crashes to disk even with the switch off, so "Report a problem" can offer one; off never sends them by itself.
     public func didReceive(_ payloads: [MXDiagnosticPayload]) {
+        defer { if payloads.contains(where: { !($0.crashDiagnostics ?? []).isEmpty }) { onNewCrash?() } }
         for p in payloads {
             for d in p.crashDiagnostics ?? [] {
                 var reason: String?

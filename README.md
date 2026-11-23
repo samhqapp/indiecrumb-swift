@@ -13,10 +13,10 @@ read all of it before you ship it.
 | `IndieCrumbUsage` | `Usage`: `recordUse()`, `add(_:_:)`, `start(pro:)`, `pingIfDue(pro:)` | Foundation |
 | `IndieCrumbCrash` | `CrashReporter`: `start()`, `pending`, `send(_:)`, `discard(_:)`, `sendAll()` | MetricKit |
 | `IndieCrumbUI` | `ReportProblemView` sheet, `PrivacySection` (one Settings row), `PrivacySummary` | SwiftUI |
-| `IndieCrumbCrashUI` | `ReportCrash.latest(reporter)`: offers the last crash in the sheet | SwiftUI, MetricKit |
+| `IndieCrumbCrashUI` | `CrashAsk.start(reporter, core:)`: the after-crash prompt (macOS); `ReportCrash.latest(reporter)`: offers the last crash in the sheet | SwiftUI, MetricKit |
 
 ```swift
-.package(url: "https://github.com/samhqapp/indiecrumb-swift", from: "0.1.0")
+.package(url: "https://github.com/samhqapp/indiecrumb-swift", from: "0.2.0")
 ```
 
 Link only the products you use; the others never enter your binary. Check:
@@ -47,6 +47,17 @@ Crash reports: create one `CrashReporter(ic)` and call `start()` early at launch
 last run's crash through MetricKit in the next run; the reporter writes it to disk. Then either ask
 the user (`pending`, `send(id)`, `discard(id)`) or call `sendAll()` off the main thread.
 
+Ask on macOS in one line, early at launch, instead of `start()`:
+
+```swift
+CrashAsk.start(CrashReporter(ic), core: ic, pro: License.isPro)   // IndieCrumbCrashUI
+```
+
+After a crash, the next launch opens a window with the "Report a Problem" sheet, titled
+"<App> Quit Unexpectedly", the crash included and the message optional. Send sends the crash (and the
+message, when there is one) without the install id. Closing the window deletes the crash, so it asks once.
+The window never activates the app.
+
 UI: `IndieCrumbUI` never links MetricKit; add `IndieCrumbCrashUI` only when the app reports crashes.
 
 ```swift
@@ -59,7 +70,7 @@ Form { ...; PrivacySection(isOn: $shareReports, shares: [.usage, .crash]) }   //
 
 The sheet is a stock grouped `Form` (on iOS inside a `NavigationStack` with Cancel and Send in the bar),
 so it follows Light, Dark and text size by itself. The privacy row is one switch; the small "1" after
-its label shows what is shared on hover (macOS) or tap (iOS). The sheet shows the exact JSON in "What gets sent" and the exact crash report text. Nothing in the UI
+its label shows what is shared on hover (macOS) or tap (iOS). The sheet shows the exact JSON in "What gets sent" and the exact crash report text. Only `CrashAsk`
 opens by itself after a crash. "Report a problem" works with the switch off too, because the user
 pressed Send; then "Include the last crash report" starts off.
 

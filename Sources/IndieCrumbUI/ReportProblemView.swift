@@ -17,7 +17,10 @@ public struct ReportProblemView: View {
         self.model = model; self.close = close
     }
 
-    private func finish() { if let close { close() } else { dismiss() } }
+    private func finish() {
+        if model.asking { model.crash?.discard() }   // sent files are gone already; an unsent one never asks again
+        if let close { close() } else { dismiss() }
+    }
     private func send() { Task { await model.send() } }
 
     private var sent: Bool { if case .sent = model.phase { true } else { false } }
@@ -97,7 +100,7 @@ struct ReportForm: View {
                     .frame(minHeight: 110)
                     .overlay(alignment: .topLeading) {
                         if model.text.isEmpty {
-                            Text(model.kind.prompt).foregroundStyle(.tertiary).allowsHitTesting(false)
+                            Text(model.asking ? "Optional: what were you doing when it quit?" : model.kind.prompt).foregroundStyle(.tertiary).allowsHitTesting(false)
                                 #if os(iOS)
                                 .padding(.top, 8).padding(.leading, 5)
                                 #else
@@ -108,7 +111,7 @@ struct ReportForm: View {
                     .accessibilityLabel("Message")
             } header: {
                 #if os(macOS)
-                Text("Report a Problem")
+                Text(model.asking ? "\(model.appName) Quit Unexpectedly" : "Report a Problem")
                 #endif
             }
             Section {

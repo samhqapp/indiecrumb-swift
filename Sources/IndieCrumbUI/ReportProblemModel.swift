@@ -18,9 +18,12 @@ public struct ReportCrash: Sendable {
     public var text: String
     /// Sends it, blocking; called off the main thread.
     public var send: @Sendable () -> Delivery
+    /// Deletes it unsent; the Ask prompt calls it when it closes.
+    public var discard: @Sendable () -> Void
 
-    public init(time: Date, version: String, text: String, send: @escaping @Sendable () -> Delivery) {
-        self.time = time; self.version = version; self.text = text; self.send = send
+    public init(time: Date, version: String, text: String, send: @escaping @Sendable () -> Delivery,
+                discard: @escaping @Sendable () -> Void = {}) {
+        self.time = time; self.version = version; self.text = text; self.send = send; self.discard = discard
     }
 }
 
@@ -44,17 +47,21 @@ public final class ReportProblemModel {
     public var phase: Phase = .editing
     public let crash: ReportCrash?
     public let appName: String
+    /// Opened by itself after a crash: the message is optional and closing deletes the crash.
+    public let asking: Bool
     @ObservationIgnored let core: IndieCrumb
     @ObservationIgnored let pro: Bool
 
     /// - Parameters:
     ///   - crash: the last crash, when the app links IndieCrumbCrashUI (`.latest(reporter)`). Included by default.
     ///   - pro: the paid tier, so the dashboard marks the item.
-    public init(core: IndieCrumb, pro: Bool = false, crash: ReportCrash? = nil, appName: String? = nil) {
+    ///   - asking: the after-crash prompt (`CrashAsk`), not the Help menu sheet.
+    public init(core: IndieCrumb, pro: Bool = false, crash: ReportCrash? = nil, appName: String? = nil, asking: Bool = false) {
         self.core = core
         self.pro = pro
         self.crash = crash
-        includeCrash = crash != nil && core.isEnabled   // switch off: the user may still turn it on
+        self.asking = asking
+        includeCrash = crash != nil && (asking || core.isEnabled)   // switch off: the user may still turn it on
         self.appName = appName ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
             ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "This app"
     }
@@ -65,9 +72,9 @@ public final class ReportProblemModel {
     }
 
     /// The switch never blocks this: the user pressed Send.
-    public var canSend: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && phase != .sending
-    }
+    public var canSend: Bool { (hasText || (includeCrash && crash != nil)) && phase != .sending }
+
+    var hasText: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     /// What gets sent: the real feedback body, with the screenshot shown as its size instead of its base64.
     public var payload: String {
@@ -116,9 +123,11 @@ public final class ReportProblemModel {
         guard canSend else { return }
         phase = .sending
         do {
-            let d = try await core.sendFeedback(kind: kind, text: text, email: trimmedEmail,
-                                                screenshot: screenshot?.data, pro: pro)
-            var results = [d]
+            var results: [Delivery] = []
+            if hasText {   // a crash alone sends no feedback item
+                results.append(try await core.sendFeedback(kind: kind, text: text, email: trimmedEmail,
+                                                           screenshot: screenshot?.data, pro: pro))
+            }
             if includeCrash, let crash {
                 results.append(await Task.detached(priority: .utility) { crash.send() }.value)
             }

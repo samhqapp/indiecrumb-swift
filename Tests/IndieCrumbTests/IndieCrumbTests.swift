@@ -316,4 +316,25 @@ final class ReportProblemTests: XCTestCase {
         XCTAssertNil(mock.sent[0].value(forHTTPHeaderField: "X-IC-Install"))
         XCTAssertEqual(Usage(c).pingIfDue(pro: false), .off)
     }
+
+    /// The after-crash prompt: the crash is on even with the switch off, Send works with no message and
+    /// sends only the crash.
+    func testAskSendsTheCrashAlone() async {
+        let mock = Mock()
+        let c = core(tempDir("ask"), mock)
+        c.isEnabled = false
+        let sent = Box()
+        let crash = ReportCrash(time: Date(), version: "1.2.3", text: "{}", send: { sent.n += 1; return .sent })
+        let m = ReportProblemModel(core: c, crash: crash, appName: "Test", asking: true)
+        XCTAssertTrue(m.includeCrash)
+        XCTAssertTrue(m.canSend)
+        await m.send()
+        XCTAssertEqual(m.phase, .sent(queued: false))
+        XCTAssertEqual(sent.n, 1)
+        XCTAssertTrue(mock.sent.isEmpty)   // no feedback item without a message
+        m.includeCrash = false
+        XCTAssertFalse(m.canSend)
+    }
 }
+
+final class Box: @unchecked Sendable { var n = 0 }
