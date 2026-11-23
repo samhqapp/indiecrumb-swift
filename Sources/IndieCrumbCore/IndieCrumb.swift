@@ -63,7 +63,9 @@ public final class IndieCrumb: @unchecked Sendable {
                                                  attributes: [.posixPermissions: 0o700])
         state = (try? Data(contentsOf: self.directory.appendingPathComponent("state.json")))
             .flatMap { try? JSONDecoder().decode(State.self, from: $0) } ?? State()
-        isEnabled = enabled
+        enabledFlag = enabled
+        // Crash files stay: the crash prompt asks after a crash even with the counts switch off.
+        if !enabled { clear(keeping: ["state.json", "crashes"]) }
     }
 
     /// The default transport: URLSession, 20 second timeout, no cookies or cache.
@@ -89,13 +91,16 @@ public final class IndieCrumb: @unchecked Sendable {
         get { lock.withLock { enabledFlag } }
         set {
             lock.withLock { enabledFlag = newValue }
-            guard !newValue else { return }
-            sendLock.withLock {
-                let fm = FileManager.default
-                for u in (try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
-                where u.lastPathComponent != "state.json" {
-                    try? fm.removeItem(at: u)
-                }
+            if !newValue { clear(keeping: ["state.json"]) }
+        }
+    }
+
+    private func clear(keeping: Set<String>) {
+        sendLock.withLock {
+            let fm = FileManager.default
+            for u in (try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+            where !keeping.contains(u.lastPathComponent) {
+                try? fm.removeItem(at: u)
             }
         }
     }

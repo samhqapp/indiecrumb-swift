@@ -96,6 +96,22 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(m.sent.count, 1)
     }
 
+    /// Launching with the switch off clears the queue but keeps crash files for the crash prompt.
+    func testLaunchWithSwitchOffKeepsCrashes() throws {
+        let d = tempDir("offlaunch")
+        let c = core(d, Mock())
+        c.setRetryAt(.distantFuture)
+        _ = c.enqueueAndFlush(route: "/ic/v1/x", body: Data("{}".utf8), install: false)
+        let crashes = d.appendingPathComponent("crashes")
+        try FileManager.default.createDirectory(at: crashes, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: crashes.appendingPathComponent("1.json"))
+        let off = IndieCrumb(endpoint: URL(string: "https://x.test/")!, key: "ic_pub_test", enabled: false, directory: d,
+                             transport: Mock().transport)
+        XCTAssertFalse(off.isEnabled)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: d.path).filter { $0 != "state.json" }, ["crashes"])
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: crashes.path), ["1.json"])
+    }
+
     /// An auto item that landed in the queue just as the switch went off is deleted unsent; a user-sent one still goes.
     func testFlushWithSwitchOffDropsAutoItemsAndKeepsUserSent() throws {
         let m = Mock()
