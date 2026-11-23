@@ -4,6 +4,7 @@ import Foundation
 @testable import IndieCrumbFeedback
 @testable import IndieCrumbUsage
 @testable import IndieCrumbUI
+@testable import IndieCrumbCrashUI
 import AppKit
 import XCTest
 
@@ -350,6 +351,55 @@ final class ReportProblemTests: XCTestCase {
         XCTAssertTrue(mock.sent.isEmpty)   // no feedback item without a message
         m.includeCrash = false
         XCTAssertFalse(m.canSend)
+    }
+
+    /// Ignore in the alert and "Don't Send" in the report window both delete the crash and send nothing.
+    func testIgnoreAndDontSendDeleteTheCrash() throws {
+        let mock = Mock()
+        let clock = Clock()
+        let c = core(tempDir("ignore"), mock, clock)
+        let cr = CrashReporter(c)
+        func spool() -> ReportProblemModel {
+            cr.write(CrashReporter.report(version: "1.2.3", build: "45", time: clock.t, exceptionType: 1, signal: 11,
+                                          reason: nil, callStackTree: Data(CrashTests.tree.utf8)))
+            XCTAssertEqual(cr.pending.count, 1)
+            return ReportProblemModel(core: c, crash: .latest(cr), appName: "Test", asking: true)
+        }
+        CrashAsk.answer(.alertSecondButtonReturn, spool())
+        XCTAssertTrue(cr.pending.isEmpty)
+        CrashAsk.answer(.alertFirstButtonReturn, spool())
+        let w = try XCTUnwrap(CrashAsk.window)
+        XCTAssertEqual(cr.pending.count, 1, "the window keeps it until a button is pressed")
+        w.dontPressed()
+        XCTAssertNil(CrashAsk.window)
+        XCTAssertTrue(cr.pending.isEmpty)
+        XCTAssertTrue(mock.sent.isEmpty)
+    }
+
+    /// The signal handler writes a file that reads back as a normal crash, with the frame's binary and UUID.
+    func testSignalHandlerSavesACrashFile() throws {
+        let clock = Clock()
+        clock.t = Date()
+        let c = core(tempDir("signal"), Mock(), clock)
+        let cr = CrashReporter(c)
+        CrashSignals.install(dir: cr.dir, version: "1.2.3", build: "45")
+        let mc = UnsafeMutablePointer<__darwin_mcontext64>.allocate(capacity: 1)
+        mc.initialize(to: __darwin_mcontext64())
+        let malloc = UInt(bitPattern: dlsym(UnsafeMutableRawPointer(bitPattern: -2), "malloc"))
+        #if arch(arm64)
+        mc.pointee.__ss.__pc = UInt64(malloc + 4)
+        #else
+        mc.pointee.__ss.__rip = UInt64(malloc + 4)
+        #endif
+        var ctx = ucontext_t()
+        ctx.uc_mcontext = mc
+        CrashSignals.save(SIGSEGV, &ctx)
+        let r = try XCTUnwrap(cr.pending.first)
+        XCTAssertEqual(r.message, "EXC_BAD_ACCESS / SIGSEGV")
+        XCTAssertEqual(r.version, "1.2.3")
+        XCTAssertEqual(r.frames.count, 1)
+        XCTAssertEqual(r.frames[0].image, "libsystem_malloc.dylib")
+        XCTAssertEqual(r.frames[0].debug_id?.count, 36)
     }
 }
 

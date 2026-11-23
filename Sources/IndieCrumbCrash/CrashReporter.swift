@@ -50,7 +50,12 @@ public final class CrashReporter: NSObject, MXMetricManagerSubscriber, @unchecke
     public init(_ core: IndieCrumb) { self.core = core }
 
     /// Subscribe early at launch, so the last run's crash arrives in this run.
-    public func start() { MXMetricManager.shared.add(self) }
+    public func start() {
+        #if os(macOS)
+        CrashSignals.install(dir: dir, version: core.version, build: core.build)
+        #endif
+        MXMetricManager.shared.add(self)
+    }
 
     /// Writes crashes to disk even with the switch off, so "Report a problem" can offer one; off never sends them by itself.
     public func didReceive(_ payloads: [MXDiagnosticPayload]) {

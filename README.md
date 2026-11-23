@@ -16,7 +16,7 @@ read all of it before you ship it.
 | `IndieCrumbCrashUI` | `CrashAsk.start(reporter, core:)`: the after-crash prompt (macOS); `ReportCrash.latest(reporter)`: offers the last crash in the sheet | SwiftUI, MetricKit |
 
 ```swift
-.package(url: "https://github.com/samhqapp/indiecrumb-swift", from: "0.2.0")
+.package(url: "https://github.com/samhqapp/indiecrumb-swift", from: "0.3.0")
 ```
 
 Link only the products you use; the others never enter your binary. Check:
@@ -53,10 +53,15 @@ Ask on macOS in one line, early at launch, instead of `start()`:
 CrashAsk.start(CrashReporter(ic), core: ic, pro: License.isPro)   // IndieCrumbCrashUI
 ```
 
-After a crash, the next launch opens a window with the "Report a Problem" sheet, titled
-"<App> Quit Unexpectedly", the crash included and the message optional. Send sends the crash (and the
-message, when there is one) without the install id. Closing the window deletes the crash, so it asks once.
-The window never activates the app.
+After a crash, the next launch shows the macOS alert "<App> quit unexpectedly." with "Report…" and
+"Ignore". Ignore deletes the crash. Report… opens the Problem Report window: an optional comment, the
+exact text that is sent, and "Send to Developer" or "Don't Send". Send sends the crash (and the comment,
+when there is one) without the install id. Every other way out deletes the crash, so it asks once.
+Nothing activates the app.
+
+On macOS, `start()` also catches fatal signals (SEGV, BUS, ILL, FPE, TRAP, ABRT), saves the crash file
+itself and ends with `_exit`, so macOS shows no "quit unexpectedly" alert of its own. Crashes no handler
+can catch, such as a kill by the OS, still go to Apple and arrive through MetricKit.
 
 UI: `IndieCrumbUI` never links MetricKit; add `IndieCrumbCrashUI` only when the app reports crashes.
 
