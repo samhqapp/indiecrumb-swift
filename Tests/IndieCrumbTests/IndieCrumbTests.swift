@@ -3,6 +3,8 @@ import Foundation
 @testable import IndieCrumbCrash
 @testable import IndieCrumbFeedback
 @testable import IndieCrumbUsage
+@testable import IndieCrumbUI
+import AppKit
 import XCTest
 
 /// Answers from a list (default 202) and records every request.
@@ -233,5 +235,26 @@ final class E2ETests: XCTestCase {
         let r = try await c.sendFeedback(kind: .bug, text: "e2e from indiecrumb-swift: the CPU column sorts wrong", screenshot: png, pro: true)
         XCTAssertEqual(r, .sent)
         try FileManager.default.removeItem(at: dir)
+    }
+}
+
+@MainActor
+final class ReportProblemTests: XCTestCase {
+    /// "What gets sent" is the real feedback body, with the screenshot shown as a size, never as base64.
+    func testPayloadMatchesBodyAndHidesScreenshotBytes() throws {
+        let m = ReportProblemModel(core: core(tempDir("report"), Mock()), appName: "Test")
+        m.text = "List jumps"
+        m.email = "a@b.co"
+        let png = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 4, pixelsHigh: 4, bitsPerSample: 8,
+                                   samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                   bytesPerRow: 0, bitsPerPixel: 0)!.representation(using: .png, properties: [:])!
+        XCTAssertTrue(m.attach(data: png, name: "shot.png"))
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(m.payload.utf8)) as? [String: Any])
+        XCTAssertEqual(json["text"] as? String, "List jumps")
+        XCTAssertEqual(json["email"] as? String, "a@b.co")
+        XCTAssertTrue((json["screenshot"] as? String)?.hasPrefix("<PNG, ") == true)
+        XCTAssertTrue(m.canSend)
+        m.core.isEnabled = false
+        XCTAssertFalse(m.canSend)   // Off in Settings sends nothing, this report included
     }
 }

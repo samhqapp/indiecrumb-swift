@@ -12,6 +12,8 @@ read all of it before you ship it.
 | `IndieCrumbFeedback` | `sendFeedback(kind:text:email:screenshot:pro:)` | ImageIO |
 | `IndieCrumbUsage` | `Usage`: `recordUse()`, `add(_:_:)`, `start(pro:)`, `pingIfDue(pro:)` | Foundation |
 | `IndieCrumbCrash` | `CrashReporter`: `start()`, `pending`, `send(_:)`, `discard(_:)`, `sendAll()` | MetricKit |
+| `IndieCrumbUI` | `ReportProblemView` sheet, `PrivacySection` (Settings), `PrivacyAboutLine` (About) | SwiftUI |
+| `IndieCrumbCrashUI` | `ReportCrash.latest(reporter)`: offers the last crash in the sheet | SwiftUI, MetricKit |
 
 Link only the products you use; the others never enter your binary. Check:
 `Samples/FeedbackOnly` links only `IndieCrumbFeedback`; its release binary has no `IndieCrumbUsage`
@@ -40,6 +42,20 @@ Version and build default to `CFBundleShortVersionString` and `CFBundleVersion`.
 Crash reports: create one `CrashReporter(ic)` and call `start()` early at launch. macOS delivers the
 last run's crash through MetricKit in the next run; the reporter writes it to disk. Then either ask
 the user (`pending`, `send(id)`, `discard(id)`) or call `sendAll()` off the main thread.
+
+UI: `IndieCrumbUI` never links MetricKit; add `IndieCrumbCrashUI` only when the app reports crashes.
+
+```swift
+.sheet(isPresented: $reporting) {
+    ReportProblemView(model: ReportProblemModel(core: ic, pro: License.isPro,
+                                                crash: .latest(crashReporter)),   // IndieCrumbCrashUI
+                      layout: .form) { reporting = false }
+}
+Form { ...; PrivacySection(isOn: $shareReports, shares: [.usage, .crash], appName: "Task Manager Pro") }
+```
+
+The sheet shows the exact JSON in "What gets sent" and the exact crash report text. Nothing in the UI
+opens by itself after a crash. With the switch off, Send is disabled and a note says why.
 
 ## When anything is sent
 

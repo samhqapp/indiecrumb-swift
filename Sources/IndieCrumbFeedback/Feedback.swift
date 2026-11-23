@@ -28,7 +28,8 @@ extension IndieCrumb {
         }
     }
 
-    func feedbackBody(kind: FeedbackKind, text: String, email: String?, screenshot: Data?, pro: Bool) throws -> Data {
+    /// The exact body `sendFeedback` posts; IndieCrumbUI shows it in "What gets sent".
+    package func feedbackBody(kind: FeedbackKind, text: String, email: String?, screenshot: Data?, pro: Bool) throws -> Data {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw FeedbackError.emptyText }
         guard text.count <= 4000 else { throw FeedbackError.textTooLong }
@@ -52,7 +53,7 @@ extension IndieCrumb {
 
 /// Returns a PNG or JPEG of at most 300 KB and 2,000 pixels a side: the input as it is when it already
 /// fits, else a JPEG at falling quality and size. Nil when ImageIO can't read it.
-func fitScreenshot(_ data: Data, maxBytes: Int = 300 << 10, maxSide: Int = 2000) -> Data? {
+package func fitScreenshot(_ data: Data, maxBytes: Int = 300 << 10, maxSide: Int = 2000) -> Data? {
     guard let src = CGImageSourceCreateWithData(data as CFData, nil),
           let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any] else { return nil }
     let w = props[kCGImagePropertyPixelWidth] as? Int ?? 0, h = props[kCGImagePropertyPixelHeight] as? Int ?? 0
