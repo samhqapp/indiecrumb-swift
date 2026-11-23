@@ -48,7 +48,7 @@ public final class ReportProblemModel {
         self.core = core
         self.pro = pro
         self.crash = crash
-        includeCrash = crash != nil
+        includeCrash = crash != nil && core.isEnabled   // switch off: the user may still turn it on
         self.appName = appName ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
             ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "This app"
     }
@@ -58,11 +58,9 @@ public final class ReportProblemModel {
         return e.isEmpty ? nil : e
     }
 
-    /// Off in Settings: nothing is sent, including this report (the core's contract).
-    public var sharingOff: Bool { !core.isEnabled }
-
+    /// The switch never blocks this: the user pressed Send.
     public var canSend: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && phase != .sending && !sharingOff
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && phase != .sending
     }
 
     /// What gets sent: the real feedback body, with the screenshot shown as its size instead of its base64.

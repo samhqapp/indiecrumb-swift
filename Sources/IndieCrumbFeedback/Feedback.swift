@@ -23,7 +23,7 @@ extension IndieCrumb {
         let body = try feedbackBody(kind: kind, text: text, email: email, screenshot: screenshot, pro: pro)
         return await withCheckedContinuation { done in
             DispatchQueue.global(qos: .utility).async {
-                done.resume(returning: self.enqueueAndFlush(route: Self.feedbackRoute, body: body, install: true))
+                done.resume(returning: self.enqueueAndFlush(route: Self.feedbackRoute, body: body, install: true, userSent: true))
             }
         }
     }

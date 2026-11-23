@@ -253,8 +253,23 @@ final class ReportProblemTests: XCTestCase {
         XCTAssertEqual(json["text"] as? String, "List jumps")
         XCTAssertEqual(json["email"] as? String, "a@b.co")
         XCTAssertTrue((json["screenshot"] as? String)?.hasPrefix("<PNG, ") == true)
+    }
+
+    /// Switch off: the app sends nothing by itself, but a report the user sends still goes, without the install id.
+    func testReportSendsWithSwitchOff() async throws {
+        let mock = Mock()
+        let c = core(tempDir("report-off"), mock)
+        c.isEnabled = false
+        let crash = ReportCrash(time: Date(), version: "1.2.3", text: "{}", send: { .sent })
+        let m = ReportProblemModel(core: c, crash: crash, appName: "Test")
+        XCTAssertFalse(m.includeCrash)   // off by default when the switch is off; the user may turn it on
+        m.text = "List jumps"
         XCTAssertTrue(m.canSend)
-        m.core.isEnabled = false
-        XCTAssertFalse(m.canSend)   // Off in Settings sends nothing, this report included
+        await m.send()
+        XCTAssertEqual(m.phase, .sent(queued: false))
+        XCTAssertEqual(mock.sent.count, 1)
+        XCTAssertEqual(mock.sent[0].url?.path, "/ic/v1/feedback")
+        XCTAssertNil(mock.sent[0].value(forHTTPHeaderField: "X-IC-Install"))
+        XCTAssertEqual(Usage(c).pingIfDue(pro: false), .off)
     }
 }

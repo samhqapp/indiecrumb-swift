@@ -51,8 +51,8 @@ public final class CrashReporter: NSObject, MXMetricManagerSubscriber, @unchecke
     /// Subscribe early at launch, so the last run's crash arrives in this run.
     public func start() { MXMetricManager.shared.add(self) }
 
+    /// Writes crashes to disk even with the switch off, so "Report a problem" can offer one; off never sends them by itself.
     public func didReceive(_ payloads: [MXDiagnosticPayload]) {
-        guard core.isEnabled else { return }
         for p in payloads {
             for d in p.crashDiagnostics ?? [] {
                 var reason: String?
@@ -84,7 +84,7 @@ public final class CrashReporter: NSObject, MXMetricManagerSubscriber, @unchecke
     }
 
     /// Ask mode: sends one report the user approved, without the install id. Blocking.
-    public func send(_ id: String) -> Delivery { sendSpooled(id, install: false) }
+    public func send(_ id: String) -> Delivery { sendSpooled(id, install: false, userSent: true) }
 
     /// Deletes one report the user declined.
     public func discard(_ id: String) {
@@ -92,12 +92,15 @@ public final class CrashReporter: NSObject, MXMetricManagerSubscriber, @unchecke
     }
 
     /// Auto mode: sends every waiting report, with the install id. Blocking; call it off the main thread.
-    @discardableResult public func sendAll() -> [Delivery] { pending.map { sendSpooled($0.id, install: true) } }
+    @discardableResult public func sendAll() -> [Delivery] {
+        guard core.isEnabled else { return [] }
+        return pending.map { sendSpooled($0.id, install: true) }
+    }
 
-    func sendSpooled(_ id: String, install: Bool) -> Delivery {
+    func sendSpooled(_ id: String, install: Bool, userSent: Bool = false) -> Delivery {
         guard let u = path(id), let body = try? Data(contentsOf: u) else { return .rejected(404) }
         try? FileManager.default.removeItem(at: u) // the queue owns it now
-        return core.enqueueAndFlush(route: Self.route, body: body, install: install)
+        return core.enqueueAndFlush(route: Self.route, body: body, install: install, userSent: userSent)
     }
 
     func path(_ id: String) -> URL? {

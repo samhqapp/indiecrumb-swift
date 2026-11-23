@@ -92,10 +92,7 @@ struct Footer: View {
                 .foregroundStyle(.red)
                 .lineLimit(2)
         default:
-            if model.sharingOff {
-                Text("Sharing is off in Settings, so nothing can be sent.")
-                    .foregroundStyle(.secondary).lineLimit(2)
-            }
+            EmptyView()
         }
     }
 }

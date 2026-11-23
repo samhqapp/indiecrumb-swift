@@ -55,14 +55,15 @@ Form { ...; PrivacySection(isOn: $shareReports, shares: [.usage, .crash], appNam
 ```
 
 The sheet shows the exact JSON in "What gets sent" and the exact crash report text. Nothing in the UI
-opens by itself after a crash. With the switch off, Send is disabled and a note says why.
+opens by itself after a crash. "Report a problem" works with the switch off too, because the user
+pressed Send; then "Include the last crash report" starts off.
 
 ## When anything is sent
 
 | What | When |
 |---|---|
 | Usage ping | at most once per UTC day: at `start` and then on its hourly check. A failed ping keeps its counts for the next try and is never queued. |
-| Feedback | only when the user submits it. Offline, it waits in the queue and goes with the next `flush()`. |
+| Feedback | only when the user submits it, even with the switch off. Offline, it waits in the queue and goes with the next `flush()`. |
 | Crash report | never from the crashing process. MetricKit hands it over at the next launch; it is written to disk and sent only by `send(_:)` or `sendAll()`. |
 
 Queue: one file per request in `<directory>/queue/`, at most 10 files, 1 MB and 7 days (oldest goes first).
@@ -70,14 +71,17 @@ Crash files: `<directory>/crashes/`, at most 10, deleted after 7 days.
 Backoff: `429`, `5xx` and network errors wait `Retry-After` or 1 minute doubling to 6 hours. `410`
 (key revoked) stops all sends for 7 days. Any other `4xx` deletes the item.
 
-Off switch: `enabled: false` or `isEnabled = false` sends nothing and deletes the queue, the crash
-files and the usage counts. Only `state.json` (the install id and the backoff time) stays.
+Off switch: `enabled: false` or `isEnabled = false` stops everything the app sends by itself (the
+ping, the counts, `sendAll()`) and deletes the queue, the crash files and the usage counts. Only
+`state.json` (the install id and the backoff time) stays. What the user sends still goes:
+`sendFeedback` and `send(id)`, without the install id. New crashes are still written to disk (never
+sent by themselves), so "Report a problem" can offer the last one.
 
 ## Every field sent
 
 Headers on every request: `Content-Type: application/json`, `X-IC-Key: <ingest key>`.
 `X-IC-Install: <32 hex>`: a random id made on the device (not from hardware, user or account), renewed
-every 90 days. It is sent with the ping, feedback and `sendAll()` crash reports, never with a crash
+every 90 days. It is sent with the ping, feedback (only while the switch is on) and `sendAll()` crash reports, never with a crash
 report the user sent with `send(_:)`. The server keeps it in memory only, for per-install limits, and
 never stores it. The default transport is an ephemeral `URLSession`: no cookies, no cache.
 

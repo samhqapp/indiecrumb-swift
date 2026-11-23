@@ -146,11 +146,13 @@ public final class IndieCrumb: @unchecked Sendable {
     }
 
     /// Stores one request in the queue, then sends the queue.
-    package func enqueueAndFlush(route: String, body: Data, install: Bool) -> Delivery {
-        guard isEnabled else { return .off }
+    /// - Parameter userSent: the user pressed Send on it, so it goes even with the switch off (without the install id).
+    package func enqueueAndFlush(route: String, body: Data, install: Bool, userSent: Bool = false) -> Delivery {
+        let on = isEnabled
+        guard on || userSent else { return .off }
         let name = String(format: "%010d-", Int(now().timeIntervalSince1970)) + randomHex(4)
         let file = queueDir.appendingPathComponent(name)
-        var data = Data("\(route) \(install ? 1 : 0)\n".utf8)
+        var data = Data("\(route) \(install && on ? 1 : 0)\n".utf8)
         data.append(body)
         guard data.count <= Self.queueBytes,
               (try? FileManager.default.createDirectory(at: queueDir, withIntermediateDirectories: true,
@@ -180,7 +182,8 @@ public final class IndieCrumb: @unchecked Sendable {
     /// wait `Retry-After` or 1 minute doubling to 6 hours; any other status drops the item.
     func post(route: String, body: Data, install: Bool) -> Outcome {
         let t = now()
-        guard isEnabled, lock.withLock({ state.retryAt <= t }) else { return .retry }
+        // No switch check here: while off, the queue holds only reports the user sent (off deletes the rest).
+        guard lock.withLock({ state.retryAt <= t }) else { return .retry }
         let base = endpoint.absoluteString.hasSuffix("/") ? String(endpoint.absoluteString.dropLast()) : endpoint.absoluteString
         guard let url = URL(string: base + route) else { return .drop(400) }
         var req = URLRequest(url: url)
