@@ -4,7 +4,7 @@ import PackageDescription
 // One product per module: an app links only what it uses, and the rest never enters its binary.
 let package = Package(
     name: "IndieCrumb",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v14), .iOS(.v17)],
     products: [
         .library(name: "IndieCrumbCore", targets: ["IndieCrumbCore"]),
         .library(name: "IndieCrumbFeedback", targets: ["IndieCrumbFeedback"]),

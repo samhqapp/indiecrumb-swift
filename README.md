@@ -1,7 +1,7 @@
 # IndieCrumb (Swift)
 
-The IndieCrumb client for Mac apps: in-app feedback, a daily usage ping, and crash reports.
-macOS 14+, MIT licensed, no dependencies beyond the system frameworks. Small on purpose, so you can
+The IndieCrumb client for Mac and iPhone apps: in-app feedback, a daily usage ping, and crash reports.
+macOS 14+ and iOS 17+, MIT licensed, no dependencies beyond the system frameworks. Small on purpose, so you can
 read all of it before you ship it.
 
 ## One product per module
@@ -12,7 +12,7 @@ read all of it before you ship it.
 | `IndieCrumbFeedback` | `sendFeedback(kind:text:email:screenshot:pro:)` | ImageIO |
 | `IndieCrumbUsage` | `Usage`: `recordUse()`, `add(_:_:)`, `start(pro:)`, `pingIfDue(pro:)` | Foundation |
 | `IndieCrumbCrash` | `CrashReporter`: `start()`, `pending`, `send(_:)`, `discard(_:)`, `sendAll()` | MetricKit |
-| `IndieCrumbUI` | `ReportProblemView` sheet, `PrivacySection` (Settings), `PrivacyAboutLine` (About) | SwiftUI |
+| `IndieCrumbUI` | `ReportProblemView` sheet, `PrivacySection` (one Settings row), `PrivacySummary` | SwiftUI |
 | `IndieCrumbCrashUI` | `ReportCrash.latest(reporter)`: offers the last crash in the sheet | SwiftUI, MetricKit |
 
 Link only the products you use; the others never enter your binary. Check:
@@ -48,13 +48,14 @@ UI: `IndieCrumbUI` never links MetricKit; add `IndieCrumbCrashUI` only when the 
 ```swift
 .sheet(isPresented: $reporting) {
     ReportProblemView(model: ReportProblemModel(core: ic, pro: License.isPro,
-                                                crash: .latest(crashReporter)),   // IndieCrumbCrashUI
-                      layout: .form) { reporting = false }
+                                                crash: .latest(crashReporter))) { reporting = false }   // IndieCrumbCrashUI
 }
-Form { ...; PrivacySection(isOn: $shareReports, shares: [.usage, .crash], appName: "Task Manager Pro") }
+Form { ...; PrivacySection(isOn: $shareReports, shares: [.usage, .crash]) }   // last row of Settings
 ```
 
-The sheet shows the exact JSON in "What gets sent" and the exact crash report text. Nothing in the UI
+The sheet is a stock grouped `Form` (on iOS inside a `NavigationStack` with Cancel and Send in the bar),
+so it follows Light, Dark and text size by itself. The privacy row is one switch; the small "1" after
+its label shows what is shared on hover (macOS) or tap (iOS). The sheet shows the exact JSON in "What gets sent" and the exact crash report text. Nothing in the UI
 opens by itself after a crash. "Report a problem" works with the switch off too, because the user
 pressed Send; then "Include the last crash report" starts off.
 
@@ -95,8 +96,8 @@ memory only), a hostname, a user name, or a file path. Crash text has the home f
 |---|---|
 | `version` | the app version, digits and dots (`1.4.2`) |
 | `build` | the build number, digits only; checked, not stored |
-| `os` | `macos` |
-| `os_major` | the macOS major version (`15`) |
+| `os` | `macos` or `ios` |
+| `os_major` | the system major version (`15`) |
 | `arch` | `arm64` or `x86_64` |
 | `d` | `1`: the first ping of a UTC day (one ping a day) |
 | `m` | `1` on the first ping of a UTC month, else `0` |
@@ -116,8 +117,8 @@ The server stores only daily totals per app, version, OS, arch and channel.
 | `email` | only when the user typed one |
 | `screenshot` | only when the user attached one: base64 PNG or JPEG, at most 300 KB and 2,000 x 2,000 pixels (larger images are scaled down to a JPEG first, which also drops their metadata) |
 | `version`, `build` | as above |
-| `os` | such as `macOS 15.1` |
-| `device` | the Mac model id, such as `Mac15,3` |
+| `os` | such as `macOS 15.1` or `iOS 18.1` |
+| `device` | the model id, such as `Mac15,3` or `iPhone16,1` |
 | `pro` | the paid tier |
 
 ### `POST /ic/v1/crash` (`IndieCrumbCrash`)

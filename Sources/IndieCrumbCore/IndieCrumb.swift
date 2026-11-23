@@ -268,23 +268,34 @@ package func writePrivate(_ data: Data, to url: URL) throws {
 }
 
 package enum Platform {
+    #if os(iOS)
+    package static let os = "ios"
+    static let osName = "iOS"
+    #else
     package static let os = "macos"
+    static let osName = "macOS"
+    #endif
     package static var osMajor: Int { ProcessInfo.processInfo.operatingSystemVersion.majorVersion }
     package static var osLabel: String {
         let v = ProcessInfo.processInfo.operatingSystemVersion
-        return "macOS \(v.majorVersion).\(v.minorVersion)"
+        return "\(osName) \(v.majorVersion).\(v.minorVersion)"
     }
     #if arch(arm64)
     package static let arch = "arm64"
     #else
     package static let arch = "x86_64"
     #endif
-    /// The model id, such as `Mac15,3`. Names no person.
+    /// The model id, such as `Mac15,3` or `iPhone16,1`. Names no person.
     package static var model: String {
+        #if os(iOS)
+        let key = "hw.machine"   // hw.model is the board id on iOS
+        #else
+        let key = "hw.model"
+        #endif
         var size = 0
-        sysctlbyname("hw.model", nil, &size, nil, 0)
+        sysctlbyname(key, nil, &size, nil, 0)
         var buf = [UInt8](repeating: 0, count: max(size, 1))
-        sysctlbyname("hw.model", &buf, &size, nil, 0)
+        sysctlbyname(key, &buf, &size, nil, 0)
         return String(decoding: buf.prefix { $0 != 0 }, as: UTF8.self)
     }
 }

@@ -1,4 +1,10 @@
+#if os(macOS)
 import AppKit
+public typealias ReportImage = NSImage
+#else
+import UIKit
+public typealias ReportImage = UIImage
+#endif
 import IndieCrumbCore
 import IndieCrumbFeedback
 import Observation
@@ -22,7 +28,7 @@ public struct ReportCrash: Sendable {
 public struct ReportScreenshot {
     public var name: String
     public var data: Data
-    public var image: NSImage
+    public var image: ReportImage
 }
 
 /// State of one "Report a problem" sheet.
@@ -78,6 +84,7 @@ public final class ReportProblemModel {
         return out.map { String(decoding: $0, as: UTF8.self) } ?? ""
     }
 
+    #if os(macOS)
     /// The app's own windows that can be attached as a screenshot (not sheets or panels).
     public var windows: [NSWindow] {
         NSApp.windows.filter { $0.isVisible && !$0.isSheet && !($0 is NSPanel) && $0.contentView != nil }
@@ -91,6 +98,7 @@ public final class ReportProblemModel {
         guard let png = rep.representation(using: .png, properties: [:]) else { return }
         attach(data: png, name: window.title.isEmpty ? appName : window.title)
     }
+    #endif
 
     /// An image file the user picked or dropped. False when it is not an image.
     @discardableResult public func attach(file: URL) -> Bool {
@@ -99,7 +107,7 @@ public final class ReportProblemModel {
     }
 
     @discardableResult public func attach(data: Data, name: String) -> Bool {
-        guard let fit = fitScreenshot(data), let image = NSImage(data: fit) else { return false }
+        guard let fit = fitScreenshot(data), let image = ReportImage(data: fit) else { return false }
         screenshot = ReportScreenshot(name: name, data: fit, image: image)
         return true
     }
