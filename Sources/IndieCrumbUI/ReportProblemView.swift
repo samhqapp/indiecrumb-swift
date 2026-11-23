@@ -112,11 +112,16 @@ struct ReportForm: View {
                 #endif
             }
             Section {
+                #if os(iOS)
+                LabeledContent("Email") {   // iOS hides a TextField's own label
+                    TextField("Email", text: $model.email, prompt: Text("Optional"))
+                        .textContentType(.emailAddress).multilineTextAlignment(.trailing)
+                        .keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
+                }
+                #else
                 TextField("Email", text: $model.email, prompt: Text("Optional, for a reply"))
                     .textContentType(.emailAddress)
-                    #if os(iOS)
-                    .keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    #endif
+                #endif
                 LabeledContent("Screenshot") { screenshot }
                 if let crash = model.crash {
                     Toggle(isOn: $model.includeCrash) {
@@ -153,7 +158,9 @@ struct ReportForm: View {
     @ViewBuilder private var screenshot: some View {
         if let s = model.screenshot {
             HStack(spacing: 8) {
+                #if os(macOS)
                 Text(s.name).lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary)
+                #endif
                 Thumbnail(image: s.image)
                 Button("Remove", systemImage: "xmark.circle.fill") { model.screenshot = nil }
                     .labelStyle(.iconOnly).foregroundStyle(.secondary).buttonStyle(.borderless)
