@@ -15,6 +15,10 @@ read all of it before you ship it.
 | `IndieCrumbUI` | `ReportProblemView` sheet, `PrivacySection` (one Settings row), `PrivacySummary` | SwiftUI |
 | `IndieCrumbCrashUI` | `ReportCrash.latest(reporter)`: offers the last crash in the sheet | SwiftUI, MetricKit |
 
+```swift
+.package(url: "https://github.com/samhqapp/indiecrumb-swift", from: "0.1.0")
+```
+
 Link only the products you use; the others never enter your binary. Check:
 `Samples/FeedbackOnly` links only `IndieCrumbFeedback`; its release binary has no `IndieCrumbUsage`
 or `IndieCrumbCrash` symbol and does not load MetricKit.
